@@ -659,6 +659,22 @@ class llama_model_kv_override(ctypes.Structure):
 #     const char * pattern;
 #     ggml_backend_buffer_type_t buft;
 # };
+class llama_model_tensor_buft_override(ctypes.Structure):
+    """Buffer type override for model tensors
+    
+    Attributes:
+        pattern (ctypes.c_char_p): regex pattern to match tensor names
+        buft (ctypes.c_void_p): buffer type to use for matching tensors
+    """
+    
+    if TYPE_CHECKING:
+        pattern: bytes
+        buft: ctypes.c_void_p
+    
+    _fields_ = [
+        ("pattern", ctypes.c_char_p),
+        ("buft", ctypes.c_void_p),
+    ]
 
 
 # struct llama_model_params {
@@ -732,7 +748,7 @@ class llama_model_params(ctypes.Structure):
 
     _fields_ = [
         ("devices", ctypes.c_void_p), # NOTE: unnused
-        ("tensor_buft_overrides", ctypes.c_void_p), # NOTE: unused
+        ("tensor_buft_overrides", ctypes.POINTER(llama_model_tensor_buft_override)),
         ("n_gpu_layers", ctypes.c_int32),
         ("split_mode", ctypes.c_int),
         ("main_gpu", ctypes.c_int32),
@@ -4371,4 +4387,16 @@ def llama_opt_epoch(
     callback_eval: ctypes.c_void_p,
     /,
 ):
+    ...
+
+
+# // GGML backend buffer types
+# GGML_API ggml_backend_buffer_type_t ggml_backend_cpu_buffer_type(void);
+@ctypes_function(
+    "ggml_backend_cpu_buffer_type",
+    [],
+    ctypes.c_void_p,
+)
+def ggml_backend_cpu_buffer_type() -> ctypes.c_void_p:
+    """Get the CPU backend buffer type"""
     ...

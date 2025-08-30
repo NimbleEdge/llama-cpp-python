@@ -70,6 +70,7 @@ class Llama:
         use_mmap: bool = True,
         use_mlock: bool = False,
         kv_overrides: Optional[Dict[str, Union[bool, int, float, str]]] = None,
+        n_cpu_moe: Optional[int] = None,
         # Context Params
         seed: int = llama_cpp.LLAMA_DEFAULT_SEED,
         n_ctx: int = 512,
@@ -155,6 +156,7 @@ class Llama:
             use_mmap: Use mmap if possible.
             use_mlock: Force the system to keep the model in RAM.
             kv_overrides: Key-value overrides for the model.
+            n_cpu_moe: Number of MoE (Mixture of Experts) layers to keep on CPU. If None, MoE layers follow normal GPU/CPU distribution.
             seed: RNG seed, -1 for random
             n_ctx: Text context, 0 = from model
             n_batch: Prompt processing maximum batch size
@@ -244,6 +246,32 @@ class Llama:
         self.model_params.vocab_only = vocab_only
         self.model_params.use_mmap = use_mmap if lora_path is None else False
         self.model_params.use_mlock = use_mlock
+
+        # Handle n_cpu_moe parameter - configure tensor buffer overrides for MoE layers on CPU
+        self._tensor_buft_overrides = None
+        if n_cpu_moe is not None:
+            if n_cpu_moe < 0:
+                raise ValueError("n_cpu_moe must be non-negative")
+            if n_cpu_moe > 0:
+                # Create tensor buffer overrides for the first n_cpu_moe MoE layers
+                override_count = n_cpu_moe + 1  # +1 for null terminator
+                self._tensor_buft_overrides = (llama_cpp.llama_model_tensor_buft_override * override_count)()
+                
+                # Get CPU buffer type
+                cpu_buft = llama_cpp.ggml_backend_cpu_buffer_type()
+                
+                # Configure overrides for each layer
+                for i in range(n_cpu_moe):
+                    pattern = f"blk.{i}.ffn_(up|down|gate)_exps".encode('utf-8')
+                    self._tensor_buft_overrides[i].pattern = pattern
+                    self._tensor_buft_overrides[i].buft = cpu_buft
+                
+                # Null terminator
+                self._tensor_buft_overrides[n_cpu_moe].pattern = None
+                self._tensor_buft_overrides[n_cpu_moe].buft = None
+                
+                # Set the overrides in model params
+                self.model_params.tensor_buft_overrides = self._tensor_buft_overrides
 
         # kv_overrides is the original python dict
         self.kv_overrides = kv_overrides
